@@ -1,0 +1,686 @@
+openapi: 3.0.3
+info:
+  title: Notification Service API
+  version: 1.0.0
+  description: |
+    HTTP API for creating and processing notification requests (SMS / Email / Push).
+    Uses bearer token authentication (Laravel Sanctum personal access tokens).
+
+servers:
+  - url: http://localhost
+
+tags:
+  - name: User
+  - name: Notifications
+  - name: System
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Something went wrong
+
+    UserCreateRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          example: Alice Example
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        password:
+          type: string
+          format: password
+          example: password123
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Alice Example
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-02-03T00:00:00.000000Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-02-03T00:00:00.000000Z
+
+    UserCreateResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: User created successfully
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        api_token:
+          type: string
+          example: 1|REDACTED_EXAMPLE_TOKEN
+
+    Channel:
+      type: string
+      enum: [sms, email, push]
+      example: sms
+
+    Priority:
+      type: string
+      enum: [high, normal, low]
+      example: normal
+
+    Template:
+      type: object
+      required: [subject, body]
+      properties:
+        subject:
+          type: string
+          example: Hello {{name}}
+        body:
+          type: string
+          example: "Dear {{name}}, your order is ready."
+
+    Recipient:
+      type: object
+      required: [to]
+      properties:
+        to:
+          type: string
+          example: "+905551234567"
+        vars:
+          type: object
+          additionalProperties: true
+          example:
+            name: Alex
+            surname: Taylor
+
+    CreateNotificationsRequest:
+      type: object
+      required: [channel, priority, template, recipients]
+      properties:
+        channel:
+          $ref: '#/components/schemas/Channel'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        idempotency_key:
+          type: string
+          nullable: true
+          description: Optional key to prevent duplicate request creation on retries.
+          example: client-generated-unique-key-123
+        template:
+          $ref: '#/components/schemas/Template'
+        recipients:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Recipient'
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When set, the request is dispatched by the scheduler when due.
+          example: 2026-03-02T18:00:00Z
+
+    CreateNotificationsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        request_id:
+          type: string
+          example: 019c213a-0e18-72c2-8a23-1b222c807264
+        requested_count:
+          type: integer
+          example: 2
+        accepted_count:
+          type: integer
+          example: 2
+        rejected_count:
+          type: integer
+          example: 0
+        pending_count:
+          type: integer
+          example: 2
+
+    RequestListItem:
+      type: object
+      properties:
+        request_id:
+          type: string
+          example: 019c213a-0e18-72c2-8a23-1b222c807264
+        status:
+          type: string
+          example: sent
+        channel:
+          $ref: '#/components/schemas/Channel'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        requested_count:
+          type: integer
+          example: 4
+        accepted_count:
+          type: integer
+          example: 4
+        pending_count:
+          type: integer
+          example: 0
+        sent_count:
+          type: integer
+          example: 4
+        failed_count:
+          type: integer
+          example: 0
+        cancelled_count:
+          type: integer
+          example: 0
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-02-03T01:59:38.000000Z
+
+    PaginationMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 2
+        per_page:
+          type: integer
+          example: 20
+        current_page:
+          type: integer
+          example: 1
+        last_page:
+          type: integer
+          example: 1
+
+    ListNotificationsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestListItem'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    MessageItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 019c0000-0000-7000-8000-000000000101
+        to:
+          type: string
+          example: alex.taylor@example.com
+        channel:
+          $ref: '#/components/schemas/Channel'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        status:
+          type: string
+          example: sent
+        delivery_state:
+          type: string
+          example: queued
+        attempts:
+          type: integer
+          example: 1
+        provider_message_id:
+          type: string
+          nullable: true
+          example: provider-msg-001
+        last_error:
+          type: string
+          nullable: true
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-02-03T01:59:38.000000Z
+
+    RequestSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 019c0000-0000-7000-8000-000000000001
+        status:
+          type: string
+          example: sent
+        requested_count:
+          type: integer
+          example: 4
+        accepted_count:
+          type: integer
+          example: 4
+        pending_count:
+          type: integer
+          example: 0
+        sent_count:
+          type: integer
+          example: 3
+        failed_count:
+          type: integer
+          example: 1
+        cancelled_count:
+          type: integer
+          example: 0
+        channel:
+          $ref: '#/components/schemas/Channel'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-02-03T01:59:38.000000Z
+
+    GetRequestMessagesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            request:
+              $ref: '#/components/schemas/RequestSummary'
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/MessageItem'
+
+    CancelMessageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: 019c0000-0000-7000-8000-000000000101
+            request_id:
+              type: string
+              example: 019c213a-0e18-72c2-8a23-1b222c807264
+            status:
+              type: string
+              example: cancelled
+            delivery_state:
+              type: string
+              example: rejected
+
+    CancelRequestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            request_id:
+              type: string
+              example: 019c213a-0e18-72c2-8a23-1b222c807264
+            cancelled_count:
+              type: integer
+              example: 2
+            pending_count:
+              type: integer
+              example: 0
+            status:
+              type: string
+              example: cancelled
+
+    QueueStats:
+      type: object
+      properties:
+        ready:
+          type: integer
+          example: 0
+        delayed:
+          type: integer
+          example: 0
+        reserved:
+          type: integer
+          example: 0
+
+    MetricsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        window_minutes:
+          type: integer
+          example: 60
+        queues:
+          type: object
+          properties:
+            connection:
+              type: string
+              example: redis
+            queues:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/QueueStats'
+        requests:
+          type: object
+          properties:
+            pending:
+              type: integer
+            processing:
+              type: integer
+            sent:
+              type: integer
+            failed:
+              type: integer
+            cancelled:
+              type: integer
+        messages:
+          type: object
+          properties:
+            pending:
+              type: integer
+            processing:
+              type: integer
+            sent:
+              type: integer
+            failed:
+              type: integer
+            cancelled:
+              type: integer
+        rates:
+          type: object
+          properties:
+            success_rate_percent:
+              type: number
+              example: 50
+            failure_rate_percent:
+              type: number
+              example: 50
+        latency_seconds_avg:
+          type: number
+          example: 90
+        latency_avg_human:
+          type: string
+          example: "00:01:30"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        checks:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                ok:
+                  type: boolean
+                  example: true
+            redis:
+              type: object
+              properties:
+                ok:
+                  type: boolean
+                  example: true
+
+paths:
+  /api/user:
+    post:
+      tags: [User]
+      summary: Create user and return API token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCreateResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      tags: [User]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthenticated
+
+  /api/notifications:
+    post:
+      tags: [Notifications]
+      summary: Create a notification request (single or batch)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNotificationsRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateNotificationsResponse'
+        '422':
+          description: Validation error
+    get:
+      tags: [Notifications]
+      summary: List notification requests
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+          description: Filter by request status
+        - in: query
+          name: channel
+          schema:
+            $ref: '#/components/schemas/Channel'
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListNotificationsResponse'
+
+  /api/notifications/{requestId}:
+    get:
+      tags: [Notifications]
+      summary: Get messages for a request
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRequestMessagesResponse'
+        '404':
+          description: Not found
+
+  /api/notifications/message/{id}/cancel:
+    post:
+      tags: [Notifications]
+      summary: Cancel a pending message
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelMessageResponse'
+        '404':
+          description: Not found
+        '409':
+          description: Conflict (not pending)
+
+  /api/notifications/request/{id}/cancel:
+    post:
+      tags: [Notifications]
+      summary: Cancel all pending messages in a request
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelRequestResponse'
+        '404':
+          description: Not found
+        '409':
+          description: Conflict (no pending messages)
+
+  /api/system/health:
+    get:
+      tags: [System]
+      summary: Health check
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/system/metrics:
+    get:
+      tags: [System]
+      summary: System metrics
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: window_minutes
+          schema:
+            type: integer
+            default: 60
+            minimum: 1
+            maximum: 1440
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
